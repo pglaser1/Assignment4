@@ -1,0 +1,235 @@
+---
+title: "Assignment4"
+author: "Pilar Glaser"
+date: "2025-10-31"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Step 1: Paste in project name from google
+```{r}
+project<- "assignment4-surv-727"
+
+```
+
+We will connect to a public database, the Chicago crime database, which has data on crime in Chicago. This code chunk was mostly provided by the homework but I needed to call up the packages it uses.
+```{r}
+
+library(bigrquery)
+library(DBI)
+
+con <- dbConnect(
+bigrquery::bigquery(),
+project = "bigquery-public-data",
+dataset = "chicago_crime",
+billing = project
+)
+
+con
+
+dbListTables(con)
+
+```
+
+Write a first query that counts the number of rows of the ‘crime‘ table in the year 2016. Use code chunks with {sql connection = con} in order to write SQL code within the document.
+
+When you run the below code you get a table that tells you the primary count is 264,871 and the overall count is 264,873.
+```{sql connection = con}
+
+SELECT count(primary_type) AS primary_count, count(*) AS overall_count
+FROM crime
+WHERE year = 2015
+LIMIT 10;
+
+```
+
+
+Next, count the number of arrests grouped by primary_type in 2016. Note that is a somewhat similar task as above, with some adjustments on which rows should be considered. Sort the results, i.e. list the number of arrests in a descending order.
+
+In the code its important to still call for the primary type as labels for the number of arrests for each that are sorted in descending order for 2016. The top of the list is theft with 61626 arrests in 2016.
+
+```{sql connection = con}
+
+SELECT primary_type, count(arrest) AS number_arrests
+FROM crime
+WHERE year = 2016
+GROUP BY primary_type
+ORDER BY number_arrests DESC;
+
+```
+
+We can also use the date for grouping. Count the number of arrests grouped by hour of the day in 2016. You can extract the latter information from date via EXTRACT(HOUR FROM date). Which time of the day is associated with the most arrests?
+
+This shows that the most arrests happened at 12 (15852) and the least at 5 (4007).
+
+```{sql connection = con}
+
+SELECT EXTRACT(HOUR FROM date) AS hour_of_day, count(arrest) AS number_arrests
+FROM crime
+WHERE year = 2016
+GROUP BY hour_of_day
+ORDER BY number_arrests DESC;
+
+```
+
+Focus only on HOMICIDE and count the number of arrests for this incident type, grouped by year. List the results in descending order.
+
+2021 had the highest number of homicide arrests at 813 and 2025 has had the least so far at 359 but for complete years the lowest is 2014 at 429.
+
+```{sql connection = con}
+
+SELECT count(arrest) AS number_arrests, year
+FROM crime
+WHERE primary_type = 'HOMICIDE'
+GROUP BY year
+ORDER BY number_arrests DESC;
+
+```
+
+Find out which districts have the highest numbers of arrests in 2015 and 2016. That is, count
+the number of arrests in 2015 and 2016, grouped by year and district. List the results in
+descending order.
+
+District 11 had the highest number in both 2015 and 2016 followed by district 8. The lowest was district 31.
+
+```{sql connection = con}
+
+SELECT district, count(arrest) AS number_arrests, year
+FROM crime
+WHERE year IN (2015,2016)
+GROUP BY district, year
+ORDER BY number_arrests DESC;
+
+```
+
+
+Lets switch to writing queries from within R via the DBI package. Create a query object that counts the number of arrests grouped by primary_type of district 11 in year 2016. The results should be displayed in descending order. Execute the query.
+
+In 2016 for district 11 the highest number of arrests came from battery (3906) and then narcotics (3635).
+```{r}
+
+query <- "SELECT primary_type, COUNT(arrest) AS number_arrests
+FROM crime
+WHERE district = 11 AND year = 2016
+GROUP BY primary_type
+ORDER BY number_arrests DESC
+"
+
+
+dis_11_arrests <- dbGetQuery(con, query)
+dis_11_arrests
+
+
+```
+
+
+
+Try to write the very same query, now using the dbplyr package. For this, you need to first map the crime table to a tibble object in R.
+
+This produced the same table as what we saw in the previous question.
+```{r}
+library(dbplyr)
+library(dplyr)
+
+
+crime_table <- tbl(con, "crime")
+
+
+dis_11_arrests_dbplyr <- crime_table |>
+filter(district == 11, year == 2016) |>
+group_by(primary_type) |>
+summarise(number_arrests = n()) |>
+arrange(desc(number_arrests))
+
+
+dis_11_arrests_dbplyr <- collect(dis_11_arrests_dbplyr)
+
+dis_11_arrests_dbplyr
+
+```
+
+
+Again, count the number of arrests grouped by primary_type of district 11 in year 2016, now
+using dplyr syntax.
+
+This gives us the same table as before with battery (3906) the highest followed by narcotics (3635).
+```{r}
+
+library(dplyr)
+
+
+dis_11_arrests_dplyr <- crime_table |>
+  filter(district == 11, year == 2016) |>
+  group_by(primary_type) |>
+  summarise(number_arrests = n()) |>
+  arrange(desc(number_arrests))
+
+dis_11_arrests_dbplyr
+
+```
+
+Count the number of arrests grouped by primary_type and year, still only for district 11. Arrange the result by year.
+
+This produces a table that starts with 2025 for district 11 and goes through the number arrests for each crime and then moves on to do the same for previous years.
+```{r}
+
+dis_11_arrests_years <- crime_table |>
+  filter(district == 11)|>
+  group_by(primary_type, year) |>
+  summarise(number_arrests = n()) |>
+  arrange(desc(year))
+
+dis_11_arrests_years
+
+```
+
+To run this without assigning it to an object so that I can do it in the next question:
+```{r}
+
+crime_table |>
+  filter(district == 11)|>
+  group_by(primary_type, year) |>
+  summarise(number_arrests = n()) |>
+  arrange(desc(year))
+
+```
+
+Assign the results of the query above to a local R object.
+
+As we did above originally, we assign it to a local r object to call on again later.
+```{r}
+
+
+dis_11_arrests_years <- crime_table |>
+  filter(district == 11)|>
+  group_by(primary_type, year) |>
+  summarise(number_arrests = n()) |>
+  arrange(desc(year))
+
+dis_11_arrests_years
+
+```
+
+Confirm that you pulled the data to the local environment by displaying the first ten rows of
+the saved data set.
+
+To call on it you just use the head function with the number 10 denoting you want the first 10 rows.
+```{r}
+
+head(dis_11_arrests_years, 10)
+
+```
+
+Close the connection.
+```{r}
+dbDisconnect(con)
+```
+
+
+Github repository access:
+
